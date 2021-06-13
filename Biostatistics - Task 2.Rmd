@@ -1,0 +1,553 @@
+---
+title: "Biostatistics - Assignment 2"
+author: "Adrian White, Mauricio Marcos"
+date: "5/21/2021"
+output: pdf_document
+---
+
+```{r, include = FALSE}
+library('plyr')
+```
+
+## Exercise 1
+
+Our objective is to estimate survival function of a given hazard function. We have piecewise hazard function of h(t) = 0.07 when t <= 5 and h(t) = 0.4 when t > 5. This implies that the survival function is piecewise exponentially distributed, since we have a hazard function of the form 1/$\theta_{t}$, where $\theta_{t}$ = 14.29 when $t \leq 5$ and $\theta_{t}$ = 2.5 when $t > 5$. 
+
+```{r}
+hazard_1 <- 0.07
+hazard_2 <- 0.4
+hazard <- c(rep(hazard_1, 100), rep(hazard_2, 100))
+# build survival function
+theta_1 <- 14.29
+theta_2 <- 2.5
+t_1 = seq(0,5, length.out = 100)
+t_2 = seq(5.0001,10, length.out = 100)
+t <- c(t_1, t_2)
+theta <- c(rep(theta_1, 100), rep(theta_2, 100))
+survival_1 <- (1/theta_1)*exp(-t_1/theta_1)
+survival_2 <- (1/theta_2)*exp(-t_2/theta_2)
+survival <- c(survival_1, survival_2)
+# plot hazard and survival functions
+par(mfrow=c(1,2))
+plot(t, hazard, main = 'Piecewise hazard function')
+plot(t, survival, main = 'Piecewise survival function')
+```
+
+We build a piecewise survival function using the exponential distribution and the given parameters $\theta_{t}$. We have the piecewise constant hazard and piecewise exponential survival functions plotted above. The survival function gives the probability that a person survives longer than a specified time t. We see that the slope of the survival function increases in magnitude as we pass t = 5, which is consistent with the significant increase in the hazard function at that time. Thus, after time t = 5, changes of survival diminish at an increased rate.
+
+```{r}
+# sample from survival distribution
+x_1 <- rexp(1000, rate = 1/theta_1)
+x_2 <- rexp(1000, rate = 1/theta_2)
+x <- c(x_1, x_2)
+par(mfrow=c(1,2))
+hist(x, breaks = "FD", main = 'Histogram of Mixed Exponential Sample')
+plot(density(x), xlim = c(0, 100), main = "KDE of Mixed Exponential Sample")
+```
+
+We can sample from the survival times by using a mixture of the two exponential distributions, then build a histogram or a kernel density estimate. We take the sample median of mixed model sample to get our median survival time.
+
+```{r}
+# sample median survival time 
+median(x)
+```
+
+## Exercise 2
+
+We would like to derive the survival, hazard, and cummulative hazard functions for the Raleigh distribution, whose density function is given by
+
+$$ f(y) = (\lambda_{0} + \lambda_{1}y)e^{-\lambda_{0} - \frac{1}{2}\lambda_{1}y^2}$$
+We will first derive the survival function, where S(t) = P(T > t) = $\int_{t}^{\infty} f(y) dy$,
+
+$$ S(t) = P(T > t) = \int_{t}^{\infty} f(y) dy \\
+= \int_{t}^{\infty} (\lambda_{0} + \lambda_{1}y)e^{-\lambda_{0} - \frac{1}{2}\lambda_{1}y^2} dy \\
+= \int_{t}^{\infty} -\frac{d}{dy}(-\lambda_{0} - \frac{1}{2}\lambda_{1}y^2)e^{-\lambda_{0} - \frac{1}{2}\lambda_{1}y^2} dy \\
+= - e^{-\lambda_{0} - \frac{1}{2}\lambda_{1}y^2} | _{t}^{\infty} \\
+S(t) = e^{-\lambda_{0} - \frac{1}{2}\lambda_{1}t^2} $$
+
+## Exercise 3
+
+## Exercise 3
+
+The objective of this exercise is to build a function for the Kaplan Meyer estimate. The Kaplan Meyer estimate is a non parametric estimate of the survival function, where the survival function gives the probability that a person survives longer than a specified time t. 
+
+We have k distinct event times, $t_{j}$, j = 1,...,k, where at each time there are $n_{j}$ individuals remaining, these are those who have not failed or been censored. We have $d_{j}$ individuals who experience the event at time $t_{j}$. We have $\frac{d_{j}}{n_{j}}$ the proportion that fail at time $t_{j}$ and $(1 - \frac{d_{j}}{n_{j}})$ the proportion surviving at time $t_{j}$. 
+
+We will use the cumulative product of this proportion for the KM estimate,
+
+$$ \hat{S(t)} = \prod_{j:t_{j} \leq t} (1 - d_{j}/n_{j})$$
+
+We will build a function using the Leukemia data set as our working example. The function will assume an object of the same form as this data.
+
+
+```{r}
+# load leukemia data set as our working example
+data <- aml[aml$x=="Maintained",]
+
+# buid Kaplan Meyer estimate function
+# the function will assume that we use data of the same form as the leukemia data set
+KM_est <- function(data) {
+  # initialize time and failure vectors
+  # total individuals in study
+  total <- nrow(data)
+  # extract number of failures at each time t_j
+  t <- count(factor(data$time))
+  d <- t[,2]
+  # initialize survivor vector and complete with loop over all times t_j
+  n <- c(total - t[1, 2], c(rep(0, total-2)))
+  for (i in 2:nrow(t)) {
+    # survivors at time t_i
+    n[i] <- n[i-1] - d[i]
+  }
+  # vector of proportions of survivors at time t_j
+  prop <- (1-d/n)
+  # remove the final term which is undefined since n_max = 0
+  prop <- prop[1:nrow(t)-1]
+  # compute Kaplan Meyer estimate for each t_j
+  KM <- rep(0, nrow(t))
+  for (j in 1:nrow(t)) {
+    KM[j] <- prod(prop[1:j])
+  }
+  KM[is.na(KM)] <- 0
+  return(KM)
+} 
+# run the function for the leukemia data
+leukemia_KM_est <- KM_est(data)
+# plot KM estimate of the survival function
+plot(leukemia_KM_est, xlab = "KM Estimate", main = "KM Estimator for Leukemia Data", ylab = "Survival Estimate")
+```
+
+We run our function and plot the Kaplan Meyer estimate for the survival function for the given data set. 
+
+## Exercise 4
+
+```{r}
+data <- read.table("Henning.txt",header = TRUE)
+head(data)
+summary(data)
+```
+
+First, we transform some variables into factors.
+
+```{r}
+data$personal <- as.factor(data$personal)
+data$property <- as.factor (data$property)
+```
+
+
+Let´s definr the censor status as is conventional: "0" if it is censored data and "1" if not censored.
+
+```{r}
+data$censor = ifelse(data$censor == 1,0,1)
+head(data$censor)
+data <- data[,2:6]
+```
+
+
+a) Compute and graph the Kaplan-Meier estimate of the survival function for all of the data
+
+```{r}
+library(survival)
+Surv(data$months,data$censor)[1:10]
+```
+
+
+Let´s estimate the survival function:
+
+```{r}
+fit <- survfit(Surv(months,censor)~1,data=data)
+summary(fit)
+```
+
+
+Let´s plot the survival function estimatation:
+
+```{r}
+plot(fit,xlab ="Time",ylab = "Survival")
+```
+
+
+Part b)
+
+Now, we need to divide the data in two groups: one composed of prisoners that were arrested for attacking a person, and others that were involved in other kind of crimes.
+
+```{r}
+data_person <- data[data$personal==1,]
+data_noperson <- data[data$personal==0,]
+```
+
+Let´s fit both models:
+
+```{r}
+fit_person <- survfit(Surv(months,censor)~1,data=data_person)
+summary(fit_person)
+fit_noperson <- survfit(Surv(months,censor)~1,data=data_noperson)
+summary(fit_noperson)
+```
+
+We can plot them separetly:
+
+```{r}
+plot(fit_person,xlab ="Time",ylab = "Survival",main="Personal Attacks")
+plot(fit_noperson,xlab ="Time",ylab = "Survival",main="Non Personal Attacks")
+```
+
+
+We can plot both of them together now:
+
+```{r}
+fit = survfit(Surv(months,censor )~ personal,data = data)
+plot(fit, lty =1:2 ,col =1:2,xlab ="Time ",ylab ="Survival")
+legend (c (75 ,150) , c (0.8,1),legend = c ( 0 ,1 ) , lty =1:2 , col =1:2)
+```
+
+
+We can plot it with a nicer layout to observe better the differences:
+
+```{r}
+library(ggfortify)
+autoplot(fit)
+```
+
+
+Now, we can perform a low-rank test to check if the two groups have the same distribution or not. 
+In other words, the null hypothesis that we will try to gather evidence against, in this case, is that both groups are the same.
+We can perform this test because we are studying a categorical variable now, either the inmate commited a felony related to attacking another person ("1), or did not ("0").
+
+Low - rank test
+```{r}
+survdiff(Surv(months,censor)~ personal,data = data)
+```
+
+
+In this case, we get a very small p-value. So we can say that at a confindence level of 95% we reject the null hypothesis that claims that both groups are the same.
+In other words, there seems to be a statistically significant difference between the two Kaplan-Meier plots for each group. 
+Nevertheless, the result is only coherent when taking a significance level equal to 0.05. If we take, for instance, a significance level equal to 0.01, we can not reject any longer the null hypothesis, and at that confidence level (99%) we could not state that there is enough evidence to say that the two groups are not the same. 
+
+Part c)
+
+Now, we have to the the same procedure, but between two different groups now: the inmates that had commited a felony against a property, and the ones that did not have.
+So first we need to create two different groups:
+
+```{r}
+data_property <- data[data$property==1,]
+data_noproperty <- data[data$property==0,]
+```
+
+
+Now, we can first fit a survival function for each group, and check them individualy.
+
+```{r}
+fit_property <- survfit(Surv(months,censor)~1,data=data_property)
+summary(fit_property)
+fit_noproperty <- survfit(Surv(months,censor)~1,data=data_noproperty)
+summary(fit_noproperty)
+```
+
+We can also plot them individually, as follows:
+
+```{r}
+plot(fit_property,xlab ="Time",ylab = "Survival",main="Property Felony")
+plot(fit_noproperty,xlab ="Time",ylab = "Survival",main="No Property Felony")
+```
+
+We can also fit a survival function for each group and plot them together:
+
+```{r}
+fit_prop = survfit(Surv(months,censor )~ property,data = data)
+plot(fit_prop, lty =1:2 ,col =1:2,xlab ="Time ",ylab ="Survival")
+legend (c (75 ,150) , c (0.8,1),legend = c ( "0" ,"1" ) , lty =1:2 , col =1:2)
+```
+
+
+We can plot it with a nicer layout to observe better the differences:
+autoplot(fit_prop)
+
+As we can see in the plots, the two survival curves behave very differently, so we expect not to reject the null hypothesis of the low-rank test, that claims that both groups are the same.
+
+Let´s run the low-rank test and see what happens:
+
+```{r}
+survdiff(Surv(months,censor)~ property,data = data)
+```
+
+
+As we can see, the p-value of the test is very low, confirming our suspision that the groups differ in their survival functions.
+
+Part d)
+
+Now, we need to fit a Cox regression of time-to-arrest, using the covariates: personal, property and cage.
+We already have transformed some variables into factors when needed.
+
+Let´s fit this model and the confidence intervals then:
+
+```{r}
+fit.cov = coxph(Surv(months,censor ) ~ personal + property + cage, data=data)
+library(car)
+Anova(fit.cov)
+confint(fit.cov)
+```
+
+As we can see the three variables seem to be significant in determining the survival of the inmates.
+
+As we can see, "cage" is the only variable whose confidence interval contains zero, meaning that is the only predictor that is not statisticaly significant.
+Both "personal" and "property" have their confidence intervals close to zero, but none of them include zero, at least at 95% confidence level. So when considering a significance level of 0.05, these predictors are significant.
+
+We can determine through a Wald Test which of the estimated coefficients are statisticaly significant:
+
+```{r}
+summary(fit.cov)
+```
+
+When calling "summary" and the name of the model with our covariates, we can observe in the column named "z" the the Wald statistic value.
+It corresponds to the ratio of each regression coefficient to its standard error (z = coef/se(coef)). The wald statistic evaluates, whether the beta (β) coefficient of a given variable is statistically significantly different from 0.
+As we can see in the output above, the three coefficients are significant (together), specially the one associated to the "cage" predictor. But we are not testing each variable in a separate way, but we are testing if  all the model is significant or not.
+Let´s apply the univariate "coxph" function tu multiple covariance at once:
+
+```{r}
+covariates <- c("personal", "property",  "cage")
+univ_formulas <- sapply(covariates,
+                        function(x) as.formula(paste('Surv(months,censor)~', x)))
+
+univ_models <- lapply( univ_formulas, function(x){coxph(x, data = data)})
+
+#Extract data 
+
+univ_results <- lapply(univ_models,
+                       function(x){ 
+                         x <- summary(x)
+                         p.value<-signif(x$wald["pvalue"], digits=2)
+                         wald.test<-signif(x$wald["test"], digits=2)
+                         beta<-signif(x$coef[1], digits=2);#coeficient beta
+                         HR <-signif(x$coef[2], digits=2);#exp(beta)
+                         HR.confint.lower <- signif(x$conf.int[,"lower .95"], 2)
+                         HR.confint.upper <- signif(x$conf.int[,"upper .95"],2)
+                         HR <- paste0(HR, " (", 
+                                      HR.confint.lower, "-", HR.confint.upper, ")")
+                         res<-c(beta, HR, wald.test, p.value)
+                         names(res)<-c("beta", "HR (95% CI for HR)", "wald.test", 
+                                       "p.value")
+                         return(res)
+                       })
+res <- t(as.data.frame(univ_results, check.names = FALSE))
+as.data.frame(res)
+```
+
+
+
+As we can see here, when performing a cox function for each covariate, we see that we still claim that the three variables are significant.
+
+Coefficient Interpretation:
+It is easier to interpret the hazard ratios than the coefficient themselves. They give the effect size of covariates.
+
+i) Personal: 0.56914 (ratio hazard = 1.766). This means that being part of the group of inmates that did  commit a personal felony (against another person) increases the hazard by a factor of 1.766. Thus,having commited a felony that involves another person is bad for the prognostic.   
+ii) Property: 0.93579 (ratio hazard = 2.54922). This means that being part of the group of people who commited a property felony increases the hazard by  a factor of 2.549. Thus, having commited a felony regarding properties is bad for the prognostic.
+iii) Cage: -0.0667 (hazard ratio = 0.9354). This means that a one unit change in "cage" decreases the hazard of recomitting a felony by around 7%.
+
+We can hav a glance at all the covariates using the ggforest plot:
+
+```{r}
+library(survminer)
+ggforest (fit.cov, data = data)
+```
+
+This plot shows the hazard ratios (HR) which are derived from the model for all covariates.
+According to this plot, having commited a felony regarding an attack to other people or to someone elses property will increase the hazard of recomitting a felony.
+In the case of "cage", it seems that the older the inmate gets, the lower is the hazard of recomitting a felony.
+
+# Exercise 6
+
+First, let´s read the data:
+
+```{r}
+data = read.table(file="http://www.mayo.edu/research/documents/lungdat/DOC-10027697", sep="",header=F, col.names=c("inst", "time", "status", "age", "sex", "ECOG","Karnofsky.physician", "Karnofsky.patient", "calories", "weight.loss"))
+head(data)
+dim(data)
+```
+
+To begin with our analysis, let´s delete the rows in which there is any missing value:
+
+```{r}
+data[data=="."] <-  NA
+sum(apply(data, 1, anyNA))
+```
+As we can see, there are 61 rows being affected by missing values. Let´s delete them, as it is asked in the exercise:
+
+```{r}
+data_complete <- data[complete.cases(data), ]
+dim(data_complete)
+```
+
+We confirm through testing the dimentions that we have succesfuly deteled the rows with missing values.
+
+Let´s transform the variables into factors when needed:
+
+```{r}
+data_complete$status <- as.factor(data_complete$status)
+data_complete$sex <- as.factor(data_complete$sex)
+data_complete$inst <- as.factor(data_complete$inst)
+data_complete$calories <- as.numeric(data_complete$calories)
+data_complete$weight.loss <- as.numeric(data_complete$weight.loss)
+data_complete$Karnofsky.patient <- as.numeric(data_complete$Karnofsky.patient)
+data_complete$Karnofsky.physician <- as.numeric(data_complete$Karnofsky.physician)
+data_complete$ECOG <- as.numeric(data_complete$ECOG)
+```
+
+```{r}
+glimpse(data_complete)
+```
+
+Now, we can perform a Cox PH model:
+
+
+```{r}
+fit = coxph(Surv( time) ~ . , data=data_complete )
+```
+
+
+```{r}
+summary(fit)
+```
+
+### Part b)
+
+Now, we are asked to test if we can simulteniously drop the variables: "Karnofsky.physician" and "Karnofsky.patient" by using Wald test and Likelihood Ratio Test.
+
+In this case, let´s see what happens when we fit a model with all the variables, and another one with all the variables except the to Karnofsky measures:
+
+```{r}
+fit_total <- 
+
+fit_without <- 
+```
+
+
+### Part c)
+
+To find the best model with a subset of covariates, I will use the Akaike measure.
+
+```{r}
+library(MASS)
+stepAIC(fit)
+```
+
+According to this measure, the best model has an Akaike of 1376.85, and is composed by the following covariates: Sex2, ECOG, Kanrofsky.physician, Karnophsky.patient and weight.loss.
+
+### Part d)
+
+```{r}
+fit_best <- coxph(formula = Surv(time) ~ sex + ECOG + Karnofsky.physician + 
+    Karnofsky.patient + weight.loss, data = data_complete)
+summary(fit_best)
+```
+
+According to the output above, we can say the following:
+
+i) Sex2: The beta coefficient is -0.243, meaning that woman have a lower risk of death (lower survival rates) than males, in this data. The hazard ratio tells us that being female reduces the hazard factor by 0.7835 (or aproximately 21%). Being female is associated with good progrnosis. Regarding the confidence intervals for the hazard ratios, we can say that with a 95% confidence level the hazard ratio will be between 0.5708 and 1.076. 
+
+ii) ECOG: Up until here this variable has been treated as a continuous variable. We can interpret this as follows: the hazard ratio for a unit change in ECOG is 1.7387. In other words, a one unit change in ECOG, given all the rest is constant, increases the hazard of death in  almost 74%.Regarding the 95% confidence interval, the hazard ratio can be between 1.187 and 2.546.
+
+iii) Karnofsky.physician: the hazard ratio for a unit change in this variable is 1.022. In other words, a one unit change in Karnofsky.physician, given all the rest is constant, increases the hazard of death in almost 0,22%. Regarding the 95% confidence interval, the hazard ratio can be between 1.0028 and 1.042.
+
+iv) Karnofsky.patient: the hazard ratio for a unit change in this variable is 0.9894. In other words, a one unit change in Karnofsky.patient, given all the rest is constant, increases the hazard of death in almost %0.0106. Regarding the  95% confidence interval, the hazard ratio can be between 0.976 and 1.003.
+
+v) weight.loss: the hazard ratio for a unit change in this variable is 0.9899. In other words, a one unit change in Karnofsky.physician, given all the rest is constant, increases the hazard of death in almost 0.0101%. Regarding the 95% confidence interval, the hazard ratio can be between 0.97 and 1.003.
+
+It is important to say that the only two covariates that do not include 1 in their hazard ratio 95% confidence intervals are: ECOG and Karnofsky.physician. This is why they are the only two covariates that result statisticaly significant.
+
+### Part e)
+
+Now, we want to see if the survival function for male and female are the same or different, given three different models:
+
+i) Treating ECOG like a continuous variable (like before)
+ii) Treating ECOG like a categorical variable (using factors)
+iii) Using a stratification technique
+
+
+Model under i)
+
+First, let´s divide the data in two different groups: one composed only by males and a second one composed only by females.
+
+```{r}
+data_male <- data_complete[data_complete$sex==1,]
+data_female <- data_complete[data_complete$sex==2,]
+```
+
+Now, let´s plot both survival plot together, and see how they behave graphically:
+
+```{r}
+fit = survfit (Surv(time)~sex , data = data_complete )
+plot(fit , lty =1:2 , col =1:2 , xlab = " Time " , ylab = " Survival " )
+legend ( c(75,150) , c (0.8 ,1) , legend = c ( " Male " ,
+" Female " ) , lty =1:2 , col =1:2)
+```
+
+
+Let´s check it with another visualization technique:
+
+```{r}
+autoplot ( fit , xlab = " Time " , ylab = " Survival " ,
+legend = c ( " Male " , " Female " ))
+```
+
+When we check the plot, we can see that both behave differently towards the upper limit. Let´s see what happens when we apply a low-rank test:
+
+```{r}
+# low - rank test
+survdiff(Surv(time)~sex,data=data_complete)
+```
+The p-value equal to 0.2 is big, and tells us we can not reject the null hypothesis that both groups are the same, at least at a significance level of 0.05 (nor 0.1,nor 0.15).
+
+Also, before when we fitted the Cox regression (in part a of this problem) we were observing that the variable "Sex" was not statisticaly significant, an thus we can exclude it from our study.
+
+```{r}
+fit = coxph (Surv(time) ~ . , ovarian )
+```
+
+
+
+```{r}
+data_complete$ECOG <- as.factor(data_complete$ECOG)
+fit = coxph (Surv(time) ~ . , data_complete )
+summary(fit)
+```
+
+Surprisingly, once we compute ECOG as a factor, with 4 different categories: 0,1,2 and 3, we can see that once we fit a COX regression, the variable "Sex" seems statisticaly significant. So in this case, it seems that the survival funcition for each sex are different one from the other. This is easy to tell: the 95% confidence interval for the hazard ratio of sex does not include zero, so it is significant.
+
+
+
+Let´s see what happens with model under iii)
+
+When using stratification techniques, every strata is allowed to have a different baseline hazard function, and thus the result obtained is an estimated weighted hazard ratio: weighted over the different strata.
+
+```{r}
+fit.all2 = coxph(Surv(time) ~ inst + status + age + strata ( ECOG ) + Karnofsky.patient + Karnofsky.physician + calories + weight.loss + sex , data_complete )
+summary(fit.all2)
+```
+
+Now, when using stratification we see that sex is a significant variable in determining the survival function. In this case, the 95% confidence interval for the hazard ratio does not include zero, so it is significant.
+
+
+Here we can see a plot, checking the Kaplan-Meir estimte for each strata:
+
+```{r}
+plot (survfit(fit.all2) , main = " Kaplan - Meier estimate for each strata " ,
+xlab = " days " , ylab = " survival " , col =1:2 , lty =1:2)
+```
+
+
+
+
+
+
+```{r}
+library(coxed)
+boot.fit.all = coxed ( fit , method = "npsf" , bootstrap = TRUE )
+boot.fit.all $ exp.du
+```
+
+
+
+
+
+
